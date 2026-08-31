@@ -1,5 +1,3 @@
-# memory/manager.py
-
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -11,16 +9,13 @@ from uuid import uuid4
 from lancedb.table import Table
 
 from embedding.embedder import TextEmbedder
+from hybrid.types import SearchMode
 
 from .retriever import MemoryRetriever
 from .scorer import MemoryScorer
 
 
 class MemoryType(StrEnum):
-    """
-    Agent Memory 基本分类。
-    """
-
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
     PROCEDURAL = "procedural"
@@ -29,24 +24,13 @@ class MemoryType(StrEnum):
 
 class MemoryManager:
     """
-    Agent Memory 生命周期管理器。
+    第七阶段 MemoryManager。
 
-    MemoryManager 不直接负责理解自然语言。
+    生命周期能力仍然不变：
+        store / search / update / delete
 
-    它负责：
-
-        store
-        search
-        update
-        delete
-
-    后续阶段可继续增加：
-
-        admission
-        consolidation
-        decay
-        reflection
-        experience learning
+    变化只发生在 search：
+        mode = vector / keyword / hybrid
     """
 
     def __init__(
@@ -56,10 +40,8 @@ class MemoryManager:
         *,
         scorer: MemoryScorer | None = None,
     ) -> None:
-
         self.table = table
         self.embedder = embedder
-
         self.scorer = scorer or MemoryScorer()
 
         self.retriever = MemoryRetriever(
@@ -68,10 +50,6 @@ class MemoryManager:
             scorer=self.scorer,
         )
 
-    # =========================================================
-    # Store
-    # =========================================================
-
     def store(
         self,
         content: str,
@@ -79,132 +57,87 @@ class MemoryManager:
         memory_type: MemoryType | str,
         importance: float = 0.5,
     ) -> str:
-        """
-        保存一条 Memory。
-
-        流程：
-
-            content
-               ↓
-            validate
-               ↓
-            embedding
-               ↓
-            metadata
-               ↓
-            LanceDB
-
-        Returns
-        -------
-        memory_id
-        """
-
         content = self._validate_content(
             content
         )
 
-        normalized_type = self._normalize_memory_type(
-            memory_type
+        normalized_type = (
+            self._normalize_memory_type(
+                memory_type
+            )
         )
 
-        importance = self._validate_importance(
-            importance
-        )
-
-        vector = self.embedder.encode(
-            content
+        importance = (
+            self._validate_importance(
+                importance
+            )
         )
 
         memory_id = str(
             uuid4()
         )
 
-        memory = {
-            "id": memory_id,
-            "content": content,
-            "vector": vector,
-            "type": normalized_type,
-            "importance": importance,
-            "created_at": datetime.now(
-                timezone.utc
-            ),
-        }
-
         self.table.add(
-            [memory]
+            [
+                {
+                    "id": memory_id,
+                    "content": content,
+                    "vector": self.embedder.encode(
+                        content
+                    ),
+                    "type": normalized_type,
+                    "importance": importance,
+                    "created_at": datetime.now(
+                        timezone.utc
+                    ),
+                }
+            ]
         )
 
         return memory_id
-
-    # =========================================================
-    # Search
-    # =========================================================
 
     def search(
         self,
         query: str,
         *,
+        mode: SearchMode | str = SearchMode.HYBRID,
         memory_types: Sequence[MemoryType | str] | None = None,
         min_importance: float | None = None,
         top_k: int = 5,
         candidate_k: int | None = None,
         extra_filter: str | None = None,
-        rerank: bool = True,
+        rerank: bool | None = None,
+        rerank_memory: bool = True,
     ) -> list[dict[str, Any]]:
-        """
-        搜索 Memory。
-
-        example:
-
-            manager.search(
-                "Planner 为什么输出不稳定？",
-                memory_types=[
-                    MemoryType.REFLECTION
-                ],
-                min_importance=0.7,
-                top_k=5,
-            )
-        """
-
-        normalized_types: list[str] | None = None
+        normalized_types = None
 
         if memory_types is not None:
             normalized_types = [
                 self._normalize_memory_type(
-                    memory_type
+                    value
                 )
-                for memory_type in memory_types
+                for value in memory_types
             ]
 
         return self.retriever.search(
             query,
+            mode=mode,
             memory_types=normalized_types,
             min_importance=min_importance,
             top_k=top_k,
             candidate_k=candidate_k,
             extra_filter=extra_filter,
             rerank=rerank,
+            rerank_memory=rerank_memory,
         )
-
-    # =========================================================
-    # Get
-    # =========================================================
 
     def get(
         self,
         memory_id: str,
     ) -> dict[str, Any] | None:
-        """
-        精确获取 Memory。
-        """
-
         return self.retriever.get_by_id(
             memory_id
         )
-
-    # =========================================================
-    # Update
-    # =========================================================
 
     def update(
         self,
@@ -214,52 +147,24 @@ class MemoryManager:
         memory_type: MemoryType | str | None = None,
         importance: float | None = None,
     ) -> bool:
-        """
-        更新 Memory。
-
-        重要规则：
-
-            如果 content 改变：
-
-                content
-                   ↓
-                embedding
-
-            必须同时重新生成 vector。
-
-        保证：
-
-            vector = Embedding(content)
-
-        始终成立。
-        """
-
         memory_id = self._validate_memory_id(
             memory_id
         )
 
         values: dict[str, Any] = {}
 
-        # -----------------------------------------
-        # Content Update
-        # -----------------------------------------
-
         if content is not None:
-
             content = self._validate_content(
                 content
             )
 
             values["content"] = content
 
-            # content 改变必须重新生成 vector
+            # 保持核心数据不变量：
+            # vector = Embedding(content)
             values["vector"] = self.embedder.encode(
                 content
             )
-
-        # -----------------------------------------
-        # Type Update
-        # -----------------------------------------
 
         if memory_type is not None:
             values["type"] = (
@@ -267,10 +172,6 @@ class MemoryManager:
                     memory_type
                 )
             )
-
-        # -----------------------------------------
-        # Importance Update
-        # -----------------------------------------
 
         if importance is not None:
             values["importance"] = (
@@ -282,12 +183,11 @@ class MemoryManager:
         if not values:
             return False
 
-        where = (
-            f"id = {self._sql_string(memory_id)}"
-        )
-
         result = self.table.update(
-            where=where,
+            where=(
+                f"id = "
+                f"{self._sql_string(memory_id)}"
+            ),
             values=values,
         )
 
@@ -297,68 +197,41 @@ class MemoryManager:
             None,
         )
 
-        if rows_updated is None:
-            return True
-
-        return rows_updated > 0
-
-    # =========================================================
-    # Delete
-    # =========================================================
+        return (
+            True
+            if rows_updated is None
+            else rows_updated > 0
+        )
 
     def delete(
         self,
         memory_id: str,
     ) -> bool:
-        """
-        删除 Memory。
-
-        当前第五阶段是显式删除。
-
-        后续会扩展成：
-
-            forgetting policy
-            memory decay
-            superseded memory
-            invalid memory
-        """
-
         memory_id = self._validate_memory_id(
             memory_id
         )
 
-        where = (
+        result = self.table.delete(
             f"id = {self._sql_string(memory_id)}"
         )
 
-        result = self.table.delete(
-            where
-        )
-
-        num_deleted = getattr(
+        count = getattr(
             result,
             "num_deleted_rows",
             None,
         )
 
-        if num_deleted is None:
-            return True
-
-        return num_deleted > 0
-
-    # =========================================================
-    # Validators
-    # =========================================================
+        return (
+            True
+            if count is None
+            else count > 0
+        )
 
     @staticmethod
     def _validate_content(
         content: str,
     ) -> str:
-
-        if not isinstance(
-            content,
-            str,
-        ):
+        if not isinstance(content, str):
             raise TypeError(
                 "content must be a string"
             )
@@ -376,11 +249,7 @@ class MemoryManager:
     def _validate_memory_id(
         memory_id: str,
     ) -> str:
-
-        if not isinstance(
-            memory_id,
-            str,
-        ):
+        if not isinstance(memory_id, str):
             raise TypeError(
                 "memory_id must be a string"
             )
@@ -398,7 +267,6 @@ class MemoryManager:
     def _validate_importance(
         importance: float,
     ) -> float:
-
         importance = float(
             importance
         )
@@ -414,7 +282,6 @@ class MemoryManager:
     def _normalize_memory_type(
         memory_type: MemoryType | str,
     ) -> str:
-
         if isinstance(
             memory_type,
             MemoryType,
@@ -432,9 +299,7 @@ class MemoryManager:
         value = memory_type.strip().lower()
 
         try:
-            return MemoryType(
-                value
-            ).value
+            return MemoryType(value).value
 
         except ValueError as exc:
             allowed = ", ".join(
@@ -451,10 +316,8 @@ class MemoryManager:
     def _sql_string(
         value: str,
     ) -> str:
-
         escaped = value.replace(
             "'",
             "''",
         )
-
         return f"'{escaped}'"

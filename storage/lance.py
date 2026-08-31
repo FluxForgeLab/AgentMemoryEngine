@@ -68,6 +68,9 @@ def experiences_schema(dimension: int) -> pa.Schema:
     设计核心字段：
         task / action / result / lesson / score
 
+    Stage 7 检索列：
+        search_text = Task + Lesson
+
     工程补充：
         id / success / created_at / vector
     """
@@ -79,6 +82,7 @@ def experiences_schema(dimension: int) -> pa.Schema:
             pa.field("action", pa.string()),
             pa.field("result", pa.string()),
             pa.field("lesson", pa.string()),
+            pa.field("search_text", pa.string()),
             pa.field("score", pa.float64()),
             pa.field("success", pa.bool_()),
             pa.field(

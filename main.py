@@ -1,4 +1,4 @@
-from examples.stage6_demo import main
+from examples.stage7_demo import main
 
 
 if __name__ == "__main__":

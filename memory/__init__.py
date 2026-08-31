@@ -1,12 +1,10 @@
-# memory/__init__.py
+from hybrid.types import SearchMode
 
 from .manager import (
     MemoryManager,
     MemoryType,
 )
-
 from .retriever import MemoryRetriever
-
 from .scorer import (
     MemoryScorer,
     ScoreWeights,
@@ -18,4 +16,5 @@ __all__ = [
     "MemoryRetriever",
     "MemoryScorer",
     "ScoreWeights",
+    "SearchMode",
 ]

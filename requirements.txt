@@ -1,0 +1,4 @@
+lancedb
+pyarrow
+sentence-transformers
+pytest

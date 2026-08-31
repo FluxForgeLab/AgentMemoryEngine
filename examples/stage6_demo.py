@@ -11,6 +11,10 @@ from experience import (
     Reflection,
     open_experience_table,
 )
+from hybrid.index import (
+    FTSProfile,
+    setup_stage7_indexes,
+)
 from memory import MemoryManager, MemoryType
 from storage import open_memories_table
 
@@ -68,6 +72,13 @@ def main() -> None:
 
     memories_table = open_memories_table(dimension=embedder.dimension)
     experiences_table = open_experience_table(embedder)
+
+    setup_stage7_indexes(
+        memory_table=memories_table,
+        experience_table=experiences_table,
+        profile=FTSProfile.MULTILINGUAL_CODE,
+        replace=False,
+    )
 
     memory_manager = MemoryManager(
         table=memories_table,
