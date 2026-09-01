@@ -1,249 +1,297 @@
-# Stage 7 — Hybrid Search
+# Qwen3-VL + 阿里云百炼 + LanceDB
 
-这一包是对 Stage 5 / Stage 6 的增量升级，不是重新设计 Memory System。
+这是独立的 Qwen3-VL fusion 向量空间，表名 `qwen_multimodal_memories`。
 
-## 第一性目标
-
-Stage 7 将：
+它不替换、也不混入 Stage 5~8 已有的：
 
 ```text
-Retrieval
-=
-Metadata Constraint
-+
-Vector Recall
-+
-Keyword Recall
-+
-Fusion / Rerank
-+
-Memory Ranking
+memories
+experiences
+artifact_memories
+image_memories
 ```
 
-落到代码。
+上层只依赖 `EmbeddingAdapter` / `RerankerAdapter`。
+百炼 API Key 稍后手动导入环境变量即可，本层不把 Key 写进代码。
 
-## 文件
+## 架构
 
 ```text
-hybrid/
-├── types.py       # vector / keyword / hybrid
-└── index.py       # FTS index 与 Experience schema migration
-
-memory/
-├── retriever.py   # 三路检索
-├── scorer.py      # 统一 retrieval relevance + importance + recency
-└── manager.py     # search(mode=...)
-
-experience/
-├── model.py       # search_text
-└── repository.py  # Experience Hybrid Search
+Query
+  ↓
+EmbeddingAdapter
+  ↓
+qwen3-vl-embedding
+  ↓
+Vector Recall ─────┐
+                   ├→ RRF Fusion
+FTS / BM25 ────────┘
+                        ↓
+                  Candidate Pool
+                        ↓
+                 RerankerAdapter
+                        ↓
+                 qwen3-vl-rerank
+                        ↓
+                      Top K
 ```
 
-## 1. 为什么 Experience 增加 search_text
-
-Stage 6：
+核心原则：
 
 ```text
-task
-action
-result
-lesson
+Qwen != 系统接口
 ```
 
-Stage 7 新增：
+上层只依赖：
 
 ```text
-search_text =
-Task + Lesson
+EmbeddingAdapter
+RerankerAdapter
 ```
 
-因为 Experience Retrieval 的目标是：
+因此后续可替换为 GME/BGE/自研实现。
+
+---
+
+## 1. 百炼环境变量
+
+```bash
+export DASHSCOPE_API_KEY="sk-..."
+export BAILIAN_WORKSPACE_ID="你的 Workspace ID"
+export BAILIAN_REGION="cn-beijing"
+```
+
+北京生产推荐 Base URL：
 
 ```text
-Current Task
-    ↓
-过去类似 Task
-+
-过去可复用 Lesson
+https://{WorkspaceId}.cn-beijing.maas.aliyuncs.com/api/v1
 ```
 
-因此 Vector 与 FTS 应尽量搜索同一份信息。
+也可以手工覆盖：
 
-## 2. 创建 FTS Index
-
-第一次进入 Stage 7：
-
-```python
-from hybrid.index import (
-    FTSProfile,
-    setup_stage7_indexes,
-)
-
-setup_stage7_indexes(
-    memory_table=memory_table,
-    experience_table=experience_table,
-    profile=FTSProfile.MULTILINGUAL_CODE,
-)
+```bash
+export BAILIAN_BASE_URL="https://xxx/api/v1"
 ```
 
-如果之前已经创建过同名 FTS index，不要反复重建。
+---
 
-需要重新构建时：
-
-```python
-replace=True
-```
-
-## 3. 为什么默认使用 ngram
-
-当前项目同时存在：
-
-- 中文
-- 英文
-- Python / TypeScript 符号
-- 类名、函数名
-- GH-1842 等 issue id
-- ESP32-S3 等型号
-- 文件路径与版本号
-
-简单按空格切词对中文不理想。
-
-因此示例默认：
-
-```text
-base_tokenizer = ngram
-ngram = 2~4
-```
-
-它不需要额外的 Jieba 模型文件。
-
-如果你的环境已经准备 LanceDB 的 Jieba tokenizer 模型，可改为：
-
-```python
-FTSProfile.CHINESE_JIEBA
-```
-
-## 4. Memory Search
-
-```python
-from hybrid.types import SearchMode
-
-results = manager.search(
-    "Planner ResearchStageV2 为什么失败",
-    mode=SearchMode.HYBRID,
-    top_k=5,
-)
-```
-
-也可以显式比较：
-
-```python
-SearchMode.VECTOR
-SearchMode.KEYWORD
-SearchMode.HYBRID
-```
-
-## 5. Experience Search
-
-```python
-experiences = repository.search(
-    "修复 GH-1842 跨平台路径问题",
-    mode=SearchMode.HYBRID,
-    min_score=0.5,
-    top_k=5,
-)
-```
-
-Stage 6 的 ExperienceLoop 不需要推倒重写。
-
-它原来的：
-
-```python
-repository.search(task, ...)
-```
-
-现在默认就是 Hybrid Search。
-
-## 6. 为什么不直接加 BM25 + Cosine + RRF 原始分数
-
-因为三种分数不在同一个 score space：
-
-```text
-cosine distance
-BM25 score
-RRF score
-```
-
-本实现把 Retriever 的最终顺序统一转成：
-
-```text
-retrieval_score = 1 / rank
-```
-
-然后再进入 Memory Scorer：
-
-```text
-Final Memory Score
-=
-retrieval relevance
-+
-importance
-+
-recency
-```
-
-这样 Retrieval 层与 Memory Value 层职责是分开的。
-
-## 7. LanceDB API
-
-本实现按照当前 Python API 的显式 Hybrid 模式：
-
-```python
-table.search(
-    query_type="hybrid",
-    vector_column_name="vector",
-    fts_columns="content",
-)\
-.vector(query_vector)\
-.text(query_text)\
-.rerank(RRFReranker(), normalize="rank")
-```
-
-并保留：
-
-```python
-.where(..., prefilter=True)
-```
-
-因此 Metadata Filter 同时约束 Vector 和 FTS 两侧候选空间。
-
-## 8. 运行
-
-把本包对应目录覆盖/合并到 Stage 6 项目：
-
-```text
-agent-memory-engine/
-├── embedding/
-├── memory/
-├── experience/
-├── hybrid/
-└── ...
-```
-
-安装：
+## 2. 安装
 
 ```bash
 pip install -r requirements.txt
 ```
 
-运行：
+`requirements.txt` 仍包含 Stage 5~8 的 sentence-transformers / OpenCLIP 等依赖；
+本层额外需要 `requests`。百炼调用本身不在安装阶段完成，等 API 导入后再跑下面的示例。
+
+---
+
+## 3. 先验证 API
 
 ```bash
-python examples/stage7_demo.py
+python examples/01_bailian_smoke_test.py
 ```
 
-测试：
+验证：
+
+```text
+qwen3-vl-embedding
+qwen3-vl-rerank
+API Key
+Workspace
+Region/Base URL
+```
+
+都正常。
+
+---
+
+## 4. 再跑 LanceDB
+
+开表走现有 `storage` 路径（`./database/lance`）。本地连接没有 `table_exists`。
 
 ```bash
-pytest tests/
+python examples/02_lancedb_demo.py
+```
+
+检索语义保持：
+
+```text
+Vector Recall + FTS
+  → RRF Fusion
+  → RerankerAdapter
+  → Top K
+```
+
+不要把这一路改成 Stage 7 的 `query_type="hybrid"`。Qwen 空间与 ST / OpenCLIP 空间分开。
+
+---
+
+## 5. Embedding Adapter
+
+```python
+embedder = BailianQwen3VLEmbeddingAdapter(
+    client,
+    dimension=1024,
+)
+```
+
+支持：
+
+```python
+MultimodalInput.text("...")
+```
+
+以及：
+
+```python
+MultimodalInput.mixed(
+    texts=["Planner 架构图"],
+    images=["./architecture.png"],
+)
+```
+
+本地图片会被自动编码成 Base64 Data URI。
+
+每个 Memory Unit 都使用：
+
+```text
+enable_fusion=true
+```
+
+得到一个统一向量。
+
+---
+
+## 6. 为什么保存 embedding_space_id
+
+表中保存：
+
+```text
+embedding_space_id
+embedding_model
+embedding_dimension
+```
+
+例如：
+
+```text
+aliyun-bailian:qwen3-vl-embedding:fusion:d1024:v1
+```
+
+以后切：
+
+```text
+Qwen -> GME
+```
+
+或者：
+
+```text
+1024 -> 2048
+```
+
+都应视为新 vector space。
+
+Embedding 替换通常需要重新生成旧 Memory 向量。
+
+Reranker 替换通常不需要。
+
+---
+
+## 7. Reranker Adapter
+
+```python
+reranker = BailianQwen3VLRerankerAdapter(
+    client
+)
+```
+
+Pipeline 只看到：
+
+```text
+RerankerAdapter
+```
+
+以后可以替换：
+
+```text
+NoopReranker
+RuleBasedReranker
+LocalCrossEncoder
+自研 Reranker
+其他云 API
+```
+
+---
+
+## 8. Fusion 和 Rerank 继续分离
+
+```text
+Vector + FTS
+   ↓
+RRF
+```
+
+解决多路召回融合。
+
+```text
+Candidate Pool
+   ↓
+Qwen3-VL-Rerank
+```
+
+解决 Query-Candidate 精排。
+
+不要把这两个阶段合并成一个概念。
+
+---
+
+## 9. Mixed Memory 的当前百炼限制
+
+`qwen3-vl-embedding` 可以：
+
+```text
+text + image + video -> fused vector
+```
+
+但百炼 `qwen3-vl-rerank` 当前 HTTP candidate 文档接口，
+一条 candidate 使用：
+
+```text
+{"text": ...}
+{"image": ...}
+{"video": ...}
+```
+
+之一。
+
+因此 Adapter 对 mixed Memory 做 provider projection：
+
+```text
+image > video > text
+```
+
+Domain Model 仍保存完整 mixed 内容。
+
+未来换支持真正 mixed-document rerank 的 Provider，
+只修改 Reranker Adapter。
+
+---
+
+## 10. 下一步建议
+
+等当前 Pipeline 跑通后，再增加：
+
+```text
+Router
+  ↓
+RetrievalPolicy
+  ↓
+动态选择：
+- vector / FTS 权重
+- candidate_k
+- rerank_k
+- reranker adapter
+- embedding space
 ```

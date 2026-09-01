@@ -1,4 +1,9 @@
 lancedb
 pyarrow
 sentence-transformers
+open-clip-torch
+Pillow
+pypdf
 pytest
+requests
+python-dotenv

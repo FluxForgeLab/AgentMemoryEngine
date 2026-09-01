@@ -4,24 +4,22 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sentence_transformers import SentenceTransformer
-
 
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 
 class TextEmbedder:
     """
-    文本 Embedding 服务。
+    文本 Embedding 服务。Stage 2~8 共用。
 
     职责：
         text -> vector
 
     不负责：
-        - Memory 分类
-        - LanceDB 存储
-        - 检索
-        - Memory 评分
+        - Memory 生命周期
+        - Chunking
+        - LanceDB
+        - Routing
     """
 
     def __init__(
@@ -31,16 +29,16 @@ class TextEmbedder:
         device: str | None = None,
         normalize_embeddings: bool = True,
     ) -> None:
+        from sentence_transformers import SentenceTransformer
+
         self._model_name = model_name
         self._normalize_embeddings = normalize_embeddings
-
         self._model = SentenceTransformer(
             model_name,
             device=device,
         )
 
         dimension = self._model.get_embedding_dimension()
-
         if dimension is None:
             raise RuntimeError(
                 f"Cannot determine embedding dimension for model: {model_name}"
@@ -54,19 +52,13 @@ class TextEmbedder:
 
     @property
     def dimension(self) -> int:
-        """
-        Embedding 向量维度。
-
-        例如：
-            paraphrase-multilingual-MiniLM-L12-v2 -> 384
-        """
         return self._dimension
 
-    def encode(self, text: str) -> list[float]:
-        """
-        将单条文本转换为 Embedding。
-        """
+    @property
+    def normalize_embeddings(self) -> bool:
+        return self._normalize_embeddings
 
+    def encode(self, text: str) -> list[float]:
         text = self._validate_text(text)
 
         vector = self._model.encode(
@@ -84,12 +76,6 @@ class TextEmbedder:
         *,
         batch_size: int = 32,
     ) -> list[list[float]]:
-        """
-        批量生成 Embedding。
-
-        后面导入 Markdown / PDF / Logs 时会使用。
-        """
-
         if not texts:
             return []
 
@@ -117,7 +103,6 @@ class TextEmbedder:
             raise TypeError("text must be a string")
 
         text = text.strip()
-
         if not text:
             raise ValueError("text cannot be empty")
 
