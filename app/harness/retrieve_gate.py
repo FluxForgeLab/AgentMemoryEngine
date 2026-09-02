@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.models import GateDecision, RetrieveGateResult
+from app.observability.trace import emit, span
 
 
 class RetrieveGate:
@@ -25,6 +26,14 @@ class RetrieveGate:
     )
 
     def decide(
+        self,
+        task: str,
+        context: dict[str, Any] | None = None,
+    ) -> RetrieveGateResult:
+        with span("gate.decide"):
+            return self._decide(task, context)
+
+    def _decide(
         self,
         task: str,
         context: dict[str, Any] | None = None,
@@ -62,8 +71,15 @@ class RetrieveGate:
         decision = (
             GateDecision.retrieve if score >= 0.35 else GateDecision.skip
         )
-        return RetrieveGateResult(
+        result = RetrieveGateResult(
             decision=decision,
             score=score,
             reasons=reasons,
         )
+        emit(
+            "gate.decided",
+            decision=result.decision.value,
+            score=result.score,
+            reasons=result.reasons,
+        )
+        return result

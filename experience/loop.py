@@ -7,6 +7,7 @@ from typing import Any, Protocol
 from .model import Experience, ExecutionOutcome, Reflection, RetrievedExperience
 from .reflector import Reflector
 from .repository import ExperienceRepository
+from app.observability.trace import emit
 
 
 class MemoryPublisher(Protocol):
@@ -103,6 +104,11 @@ class ExperienceLoop:
             min_score=self.retrieve_min_score,
             top_k=self.retrieve_top_k,
         )
+        emit(
+            "experience.before_task",
+            task=task,
+            hits=len(experiences),
+        )
         return ExperienceContext(task=task, experiences=experiences)
 
     def after_task(
@@ -119,9 +125,17 @@ class ExperienceLoop:
         )
 
         if not reflection.should_store:
+            emit("experience.reflect", stored=False, reason="should_not_store", score=reflection.score)
             return reflection, None
 
         if reflection.score < self.min_store_score:
+            emit(
+                "experience.reflect",
+                stored=False,
+                reason="low_score",
+                score=reflection.score,
+                min_store_score=self.min_store_score,
+            )
             return reflection, None
 
         experience = Experience.create(
@@ -134,6 +148,12 @@ class ExperienceLoop:
         )
 
         self.repository.add(experience)
+        emit(
+            "experience.persist",
+            id=experience.id,
+            score=experience.score,
+            lesson=reflection.lesson,
+        )
 
         # 可选：把“压缩后的 Lesson”同步发布到第五阶段通用 Memory 层。
         if self.memory_publisher is not None:
@@ -143,6 +163,7 @@ class ExperienceLoop:
                 importance=reflection.score,
             )
 
+        emit("experience.reflect", stored=True, score=reflection.score)
         return reflection, experience
 
     def run(

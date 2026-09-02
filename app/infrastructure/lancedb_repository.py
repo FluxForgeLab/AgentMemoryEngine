@@ -7,6 +7,7 @@ from typing import Any, Sequence
 
 from app.domain.interfaces import MemoryRepository
 from app.domain.models import Memory, MemoryType
+from app.observability.trace import emit
 from storage import open_service_memories_table
 
 
@@ -55,6 +56,7 @@ class LanceDBMemoryRepository(MemoryRepository):
 
     async def add(self, memory: Memory) -> Memory:
         await asyncio.to_thread(self.table.add, [self._to_row(memory)])
+        emit("repo.write", op="add", id=memory.id)
         return memory
 
     async def get(self, memory_id: str) -> Memory | None:
@@ -79,6 +81,7 @@ class LanceDBMemoryRepository(MemoryRepository):
             self.table.delete,
             f"id = {_sql(memory_id)}",
         )
+        emit("repo.write", op="delete", id=memory_id)
         return True
 
     async def update(
@@ -99,6 +102,7 @@ class LanceDBMemoryRepository(MemoryRepository):
             f"id = {_sql(memory_id)}",
         )
         await asyncio.to_thread(self.table.add, [self._to_row(updated)])
+        emit("repo.write", op="update", id=memory_id)
         return updated
 
     @staticmethod
@@ -129,6 +133,7 @@ class LanceDBMemoryRepository(MemoryRepository):
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if _is_empty_table(self.table):
+            emit("repo.vector_search", empty=True, hits=0, limit=limit)
             return []
 
         fetch_limit = max(limit * 4, limit)
@@ -167,6 +172,14 @@ class LanceDBMemoryRepository(MemoryRepository):
             if len(output) >= limit:
                 break
 
+        emit(
+            "repo.vector_search",
+            empty=False,
+            fetch_limit=fetch_limit,
+            raw_rows=len(rows),
+            hits=len(output),
+            limit=limit,
+        )
         return output
 
     async def keyword_search(
@@ -178,9 +191,9 @@ class LanceDBMemoryRepository(MemoryRepository):
         filters: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         if _is_empty_table(self.table):
+            emit("repo.keyword_search", empty=True, hits=0, query=query)
             return []
 
-        # Stage 10：database-agnostic 中文 2-gram lexical；不混入 Stage 5-8 的 FTS 空间。
         def _all_rows():
             return self.table.search().limit(10000).to_list()
 
@@ -211,7 +224,16 @@ class LanceDBMemoryRepository(MemoryRepository):
             })
 
         scored.sort(key=lambda x: x["keyword_score"], reverse=True)
-        return scored[:limit]
+        trimmed = scored[:limit]
+        emit(
+            "repo.keyword_search",
+            empty=False,
+            grams=len(grams),
+            raw_rows=len(rows),
+            hits=len(trimmed),
+            query=query,
+        )
+        return trimmed
 
 
 def _lexical_grams(query: str) -> set[str]:

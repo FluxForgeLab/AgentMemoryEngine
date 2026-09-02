@@ -68,6 +68,11 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
+    from app.observability.setup import setup_logging
+    from app.observability.trace import bind_turn
+    setup_logging(source="example")
+    bind_turn()
+
     embedder = TextEmbedder()
 
     memories_table = open_memories_table(dimension=embedder.dimension)

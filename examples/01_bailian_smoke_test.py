@@ -25,6 +25,11 @@ def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
 
+    from app.observability.setup import setup_logging
+    from app.observability.trace import bind_turn
+    setup_logging(source="example")
+    bind_turn()
+
     config = BailianConfig.from_env()
     client = BailianClient(config)
 

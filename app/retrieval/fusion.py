@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.observability.trace import emit
+
 
 def reciprocal_rank_fusion(
     result_sets: list[list[dict[str, Any]]],
@@ -28,4 +30,11 @@ def reciprocal_rank_fusion(
 
     output = list(merged.values())
     output.sort(key=lambda x: x["score"], reverse=True)
+    emit(
+        "fusion.rrf",
+        input_sets=len(result_sets),
+        input_sizes=[len(x) for x in result_sets],
+        count=len(output),
+        k=k,
+    )
     return output

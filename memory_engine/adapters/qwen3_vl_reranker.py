@@ -3,6 +3,7 @@ from memory_engine.domain import (
     MultimodalInput, RerankCandidate, RerankResult,
 )
 from memory_engine.providers.bailian import BailianClient, image_ref, video_ref
+from app.observability.trace import emit
 
 class BailianQwen3VLRerankerAdapter:
     PATH = "services/rerank/text-rerank/text-rerank"
@@ -39,7 +40,7 @@ class BailianQwen3VLRerankerAdapter:
         )
 
         rows = data.get("output", {}).get("results", [])
-        return [
+        output = [
             RerankResult(
                 candidate=candidates[int(row["index"])],
                 rerank_score=float(row["relevance_score"]),
@@ -47,6 +48,8 @@ class BailianQwen3VLRerankerAdapter:
             )
             for rank, row in enumerate(rows, start=1)
         ]
+        emit("vl.rerank", model=self.model, candidates=len(candidates), hits=len(output))
+        return output
 
     def _query(self, query: MultimodalInput):
         query.validate()

@@ -10,6 +10,7 @@ from embedding.embedder import TextEmbedder
 from hybrid.types import SearchMode
 
 from .scorer import MemoryScorer
+from app.observability.trace import emit
 
 
 class MemoryRetriever:
@@ -114,6 +115,7 @@ class MemoryRetriever:
 
         count_rows = getattr(self.table, "count_rows", None)
         if callable(count_rows) and count_rows() == 0:
+            emit("stage57.search", layer="memory", mode=mode.value, query=query, hits=0, empty=True)
             return []
 
         where = self._build_filter(
@@ -152,11 +154,13 @@ class MemoryRetriever:
         )
 
         if not rerank_memory:
-            return rows[:top_k]
+            trimmed = rows[:top_k]
+            emit("stage57.search", layer="memory", mode=mode.value, query=query, hits=len(trimmed))
+            return trimmed
 
-        return self.scorer.rerank(
-            rows
-        )[:top_k]
+        ranked = self.scorer.rerank(rows)[:top_k]
+        emit("stage57.search", layer="memory", mode=mode.value, query=query, hits=len(ranked))
+        return ranked
 
     def vector_search(
         self,

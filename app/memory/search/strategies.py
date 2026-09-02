@@ -5,6 +5,7 @@ from typing import Any
 from app.domain.interfaces import EmbeddingProvider, MemoryRepository
 from app.domain.models import MemoryType
 from app.memory.search.fusion import reciprocal_rank_fusion
+from app.observability.trace import emit
 
 
 class KeywordSearchStrategy:
@@ -21,6 +22,7 @@ class KeywordSearchStrategy:
         for item in results:
             item["score"] = float(item.get("keyword_score", 0.0))
             item["route"] = "keyword"
+        emit("search.keyword", query=query, hits=len(results), top_k=top_k)
         return results
 
 
@@ -40,6 +42,7 @@ class VectorSearchStrategy:
         for item in results:
             item["score"] = float(item.get("vector_score", 0.0))
             item["route"] = "vector"
+        emit("search.vector", query=query, hits=len(results), top_k=top_k)
         return results
 
 
@@ -83,4 +86,13 @@ class HybridSearchStrategy:
 
         for item in fused:
             item["route"] = f"hybrid:{self.variant}"
-        return fused[:top_k]
+        trimmed = fused[:top_k]
+        emit(
+            "search.hybrid",
+            variant=self.variant,
+            keyword_hits=len(keyword_results),
+            vector_hits=len(vector_results),
+            fused=len(fused),
+            hits=len(trimmed),
+        )
+        return trimmed

@@ -8,6 +8,7 @@ from app.memory.search.strategies import (
     KeywordSearchStrategy,
     VectorSearchStrategy,
 )
+from app.observability.trace import emit, span
 
 
 class SearchRouter:
@@ -48,16 +49,22 @@ class SearchRouter:
             filters=filters,
         )
 
-        if method == SearchMethod.keyword:
-            return await self.keyword.search(**kwargs)
-        if method == SearchMethod.vector:
-            return await self.vector.search(**kwargs)
-        if method == SearchMethod.agentic:
-            return await self.agentic.search(**kwargs)
+        with span("router.dispatch"):
+            if method == SearchMethod.keyword:
+                emit("router.dispatch", method=method.value, variant=None)
+                return await self.keyword.search(**kwargs)
+            if method == SearchMethod.vector:
+                emit("router.dispatch", method=method.value, variant=None)
+                return await self.vector.search(**kwargs)
+            if method == SearchMethod.agentic:
+                emit("router.dispatch", method=method.value, variant=None)
+                return await self.agentic.search(**kwargs)
 
-        hybrid = HybridSearchStrategy(
-            self.repository,
-            self.embedder,
-            variant=self._hybrid_variant(memory_types),
-        )
-        return await hybrid.search(**kwargs)
+            variant = self._hybrid_variant(memory_types)
+            emit("router.dispatch", method="hybrid", variant=variant)
+            hybrid = HybridSearchStrategy(
+                self.repository,
+                self.embedder,
+                variant=variant,
+            )
+            return await hybrid.search(**kwargs)

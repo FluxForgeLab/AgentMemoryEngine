@@ -1,6 +1,7 @@
 from __future__ import annotations
 from memory_engine.domain import EmbeddingDescriptor, MultimodalInput
 from memory_engine.providers.bailian import BailianClient, image_ref, video_ref
+from app.observability.trace import emit
 
 class BailianQwen3VLEmbeddingAdapter:
     PATH = "services/embeddings/multimodal-embedding/multimodal-embedding"
@@ -63,4 +64,5 @@ class BailianQwen3VLEmbeddingAdapter:
             raise RuntimeError(
                 f"dimension mismatch: expected {self.dimension}, got {len(vector)}"
             )
+        emit("vl.embed", model=self.model, dim=self.dimension, text_parts=len(content.texts))
         return [float(x) for x in vector]

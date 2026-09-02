@@ -16,6 +16,7 @@ from storage import (
     open_qwen_multimodal_table as _open_qwen_multimodal_table,
     qwen_multimodal_schema,
 )
+from app.observability.trace import emit
 
 
 TABLE_NAME = QWEN_MULTIMODAL_TABLE_NAME
@@ -118,6 +119,7 @@ class MultimodalMemoryRepository:
         top_k: int = 40,
     ) -> list[RerankCandidate]:
         if _is_empty_table(self.table):
+            emit("vl.vector_search", empty=True, hits=0)
             return []
 
         d = self.embedder.descriptor
@@ -136,7 +138,9 @@ class MultimodalMemoryRepository:
             .limit(top_k)
             .to_list()
         )
-        return _to_candidates(rows, "vector")
+        candidates = _to_candidates(rows, "vector")
+        emit("vl.vector_search", empty=False, hits=len(candidates), top_k=top_k)
+        return candidates
 
     def keyword_search(
         self,
@@ -148,6 +152,7 @@ class MultimodalMemoryRepository:
         if not query_text:
             return []
         if _is_empty_table(self.table):
+            emit("vl.keyword_search", empty=True, hits=0)
             return []
 
         d = self.embedder.descriptor
@@ -165,7 +170,9 @@ class MultimodalMemoryRepository:
             .limit(top_k)
             .to_list()
         )
-        return _to_candidates(rows, "keyword")
+        candidates = _to_candidates(rows, "keyword")
+        emit("vl.keyword_search", empty=False, hits=len(candidates), top_k=top_k)
+        return candidates
 
 
 def _ensure_table_compatible(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.models import MemoryType, RetrievalPlan, SearchMethod
+from app.observability.trace import emit, span
 
 
 class RetrievalPlanner:
@@ -16,6 +17,15 @@ class RetrievalPlanner:
     ) -> RetrievalPlan:
         text = task.lower()
         context = context or {}
+        with span("planner.build"):
+            return self._build(text, task, context)
+
+    def _build(
+        self,
+        text: str,
+        task: str,
+        context: dict[str, Any],
+    ) -> RetrievalPlan:
         memory_types: list[MemoryType] = []
 
         if any(x in text for x in ("上次", "昨天", "之前做", "发生", "当时")):
@@ -50,7 +60,7 @@ class RetrievalPlanner:
             SearchMethod.agentic: "complex",
         }[method]
 
-        return RetrievalPlan(
+        plan = RetrievalPlan(
             should_retrieve=True,
             method=method,
             memory_types=memory_types,
@@ -60,6 +70,18 @@ class RetrievalPlanner:
             budget_chars=5000 if method == SearchMethod.agentic else 3500,
             profile=profile,
         )
+        emit(
+            "plan.built",
+            should_retrieve=plan.should_retrieve,
+            method=plan.method.value if plan.method else None,
+            profile=plan.profile,
+            memory_types=[x.value for x in plan.memory_types],
+            queries=plan.queries,
+            top_k=plan.top_k,
+            filters=plan.filters,
+            budget_chars=plan.budget_chars,
+        )
+        return plan
 
     def _choose_method(
         self,

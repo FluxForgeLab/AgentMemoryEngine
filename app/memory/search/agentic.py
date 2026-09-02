@@ -3,6 +3,7 @@ from __future__ import annotations
 from app.domain.interfaces import EmbeddingProvider, MemoryRepository
 from app.memory.search.fusion import reciprocal_rank_fusion
 from app.memory.search.strategies import HybridSearchStrategy
+from app.observability.trace import emit
 
 
 class SufficiencyEvaluator:
@@ -53,13 +54,24 @@ class AgenticSearchStrategy:
             filters=filters,
         )
 
-        if self.evaluator.is_sufficient(first):
+        sufficient = self.evaluator.is_sufficient(first)
+        emit(
+            "search.agentic.first",
+            query=query,
+            hits=len(first),
+            sufficient=sufficient,
+        )
+
+        if sufficient:
             for item in first[:top_k]:
                 item["route"] = "agentic:first_pass_sufficient"
+            emit("search.agentic.multi", used=False, hits=top_k)
             return first[:top_k]
 
+        rewrites = self.query_generator.generate(query)[1:]
+        emit("search.agentic.rewrite", queries=rewrites)
         result_sets = [first]
-        for expanded in self.query_generator.generate(query)[1:]:
+        for expanded in rewrites:
             result_sets.append(
                 await self.first_pass.search(
                     query=expanded,
@@ -72,4 +84,12 @@ class AgenticSearchStrategy:
         fused = reciprocal_rank_fusion(result_sets)
         for item in fused:
             item["route"] = "agentic:multi_query"
-        return fused[:top_k]
+        trimmed = fused[:top_k]
+        emit(
+            "search.agentic.multi",
+            used=True,
+            rounds=len(result_sets),
+            round_sizes=[len(x) for x in result_sets],
+            hits=len(trimmed),
+        )
+        return trimmed

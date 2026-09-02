@@ -146,6 +146,25 @@ python -m uvicorn app.main:app --reload
 | `EMBEDDING_PROVIDER` | `qwen` | 可选 `qwen` / `mock` |
 | `EMBEDDING_DIM` | `1024` | fallback 和 mock embedding 维度 |
 | `RERANKER_PROVIDER` | `qwen` | 当前 Stage 10 主链未使用，保留给旧 pipeline |
+| `LLM_PROVIDER` | `deepseek` | CLI 用 `deepseek` 或 `kimi` |
+| `LLM_API_KEY` | | DeepSeek / Kimi 的 API Key，仅 CLI 需要 |
+| `LLM_BASE_URL` / `LLM_MODEL` | 按厂商默认 | 可覆盖兼容接口地址和模型名。Kimi K3 用 `kimi-k3`；国内 `api.moonshot.cn`，国际 `api.moonshot.ai`。thinking 模型不要设 temperature |
+| `LOG_DIR` | `./logs` | 追踪日志目录（jsonl + 文本） |
+| `AME_LOG_DISABLED` / `LOG_DISABLED` | `0` | `1`/`true` 时不写日志文件；从 `.env` 读取 |
+
+日志写在项目根目录 `logs/`（jsonl + 文本）。pytest 默认不写文件。可用 `AME_LOG_DISABLED=1` 关闭（进程环境或项目根 `.env` 均可）。
+
+## CLI 对话
+
+不需要先启动 uvicorn。复用同一套 `service_memories` 与 Harness：
+
+```powershell
+python -m app.cli
+```
+
+常用命令：`/add reflection | ...`、`/debug`、`/compare`、`/nomem`、`/project harness`、`/quit`。
+
+每轮会把 Gate → Plan → Search → Context → LLM 的事件写入 `logs/cli-*.jsonl`。
 
 若要完全离线运行，可改用新的数据库目录，避免与现有 1024 维表冲突：
 

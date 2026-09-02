@@ -5,6 +5,7 @@ from typing import Any
 
 from app.domain.interfaces import EmbeddingProvider, MemoryRepository
 from app.domain.models import Memory, MemoryType
+from app.observability.trace import emit, span
 
 
 class MemoryManager:
@@ -24,17 +25,24 @@ class MemoryManager:
         importance: float,
         metadata: dict[str, Any],
     ) -> Memory:
-        vector = await self.embedder.embed(content)
-
-        memory = Memory.new(
-            content=content,
-            memory_type=memory_type,
-            importance=importance,
-            metadata=metadata,
-            vector=vector,
-        )
-
-        return await self.repository.add(memory)
+        with span("manager.store"):
+            vector = await self.embedder.embed(content)
+            memory = Memory.new(
+                content=content,
+                memory_type=memory_type,
+                importance=importance,
+                metadata=metadata,
+                vector=vector,
+            )
+            stored = await self.repository.add(memory)
+            emit(
+                "memory.store.start",
+                id=stored.id,
+                memory_type=memory_type.value,
+                content=content,
+                reembedded=True,
+            )
+            return stored
 
     async def get(self, memory_id: str) -> Memory | None:
         return await self.repository.get(memory_id)
@@ -62,6 +70,7 @@ class MemoryManager:
         if content is not None:
             updates["content"] = content
             updates["vector"] = await self.embedder.embed(content)
+            emit("memory.reembed", id=memory_id, content=content)
 
         if memory_type is not None:
             updates["memory_type"] = memory_type

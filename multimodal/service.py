@@ -15,6 +15,7 @@ from .repositories import (
     ArtifactRepository,
     ImageRepository,
 )
+from app.observability.trace import emit
 
 
 class MultimodalMemoryService:
@@ -59,9 +60,9 @@ class MultimodalMemoryService:
             )
         )
 
-        return self.artifacts.add_many(
-            chunks
-        )
+        ids = self.artifacts.add_many(chunks)
+        emit("mm.route", kind="text", chunks=len(chunks), ids=len(ids))
+        return ids
 
     def ingest_file(
         self,
@@ -123,9 +124,9 @@ class MultimodalMemoryService:
                 .process(path)
             )
 
-        return self.artifacts.add_many(
-            chunks
-        )
+        ids = self.artifacts.add_many(chunks)
+        emit("mm.route", kind="file", path=path, chunks=len(chunks), ids=len(ids))
+        return ids
 
     def ingest_image(
         self,
@@ -143,6 +144,6 @@ class MultimodalMemoryService:
             metadata=metadata,
         )
 
-        return self.images.add(
-            image
-        )
+        image_id = self.images.add(image)
+        emit("mm.route", kind="image", path=path, id=image_id)
+        return image_id

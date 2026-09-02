@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from memory_engine.domain import MultimodalInput, RerankResult
 from memory_engine.fusion import rrf
 from memory_engine.ports import MemoryRepository, RerankerAdapter
+from app.observability.trace import emit, span
 
 
 @dataclass(frozen=True)
@@ -34,39 +35,46 @@ class RetrievalPipeline:
         policy: RetrievalPolicy | None = None,
     ) -> list[RerankResult]:
         policy = policy or RetrievalPolicy()
-
-        vector = self.repository.vector_search(
-            query, top_k=policy.candidate_k
-        )
-        lists = [(policy.vector_weight, vector)]
-
-        if policy.enable_keyword and query.searchable_text():
-            keyword = self.repository.keyword_search(
-                query.searchable_text(),
-                top_k=policy.candidate_k,
+        with span("vl.search"):
+            vector = self.repository.vector_search(
+                query, top_k=policy.candidate_k
             )
-            lists.append((policy.keyword_weight, keyword))
+            lists = [(policy.vector_weight, vector)]
 
-        fused = rrf(lists, limit=policy.candidate_k)
-
-        if policy.enable_rerank:
-            reranked = self.reranker.rerank(
-                query,
-                fused,
-                top_k=min(policy.rerank_k, len(fused)),
-            )
-        else:
-            reranked = [
-                RerankResult(x, x.retrieval_score, i)
-                for i, x in enumerate(
-                    fused[:policy.rerank_k], start=1
+            if policy.enable_keyword and query.searchable_text():
+                keyword = self.repository.keyword_search(
+                    query.searchable_text(),
+                    top_k=policy.candidate_k,
                 )
-            ]
+                lists.append((policy.keyword_weight, keyword))
 
-        # 这里先以 rerank score 为最终排序。
-        # Stage 5 的 importance/recency scorer 可在这一层之后继续叠加。
-        return sorted(
-            reranked,
-            key=lambda x: x.rerank_score,
-            reverse=True,
-        )[:policy.top_k]
+            fused = rrf(lists, limit=policy.candidate_k)
+
+            if policy.enable_rerank:
+                reranked = self.reranker.rerank(
+                    query,
+                    fused,
+                    top_k=min(policy.rerank_k, len(fused)),
+                )
+            else:
+                reranked = [
+                    RerankResult(x, x.retrieval_score, i)
+                    for i, x in enumerate(
+                        fused[:policy.rerank_k], start=1
+                    )
+                ]
+
+            output = sorted(
+                reranked,
+                key=lambda x: x.rerank_score,
+                reverse=True,
+            )[:policy.top_k]
+            emit(
+                "vl.search",
+                vector_hits=len(vector),
+                fused=len(fused),
+                reranked=len(reranked),
+                hits=len(output),
+                enable_rerank=policy.enable_rerank,
+            )
+            return output

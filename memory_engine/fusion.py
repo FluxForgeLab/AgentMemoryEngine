@@ -1,6 +1,8 @@
 from collections import defaultdict
 from dataclasses import replace
 
+from app.observability.trace import emit
+
 
 def rrf(lists, *, k=60, limit=50):
     scores = defaultdict(float)
@@ -11,6 +13,13 @@ def rrf(lists, *, k=60, limit=50):
             records[item.id] = item
 
     ordered = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:limit]
+    emit(
+        "vl.rrf",
+        input_sets=len(lists),
+        count=len(ordered),
+        k=k,
+        limit=limit,
+    )
     if not ordered:
         return []
     max_score = ordered[0][1] or 1.0

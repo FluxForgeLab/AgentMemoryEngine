@@ -10,6 +10,7 @@ from hybrid.index import ensure_experience_search_text_column
 from hybrid.types import SearchMode
 
 from .model import Experience, RetrievedExperience
+from app.observability.trace import emit
 
 if TYPE_CHECKING:
     from embedding.embedder import TextEmbedder
@@ -121,6 +122,7 @@ class ExperienceRepository:
 
         count_rows = getattr(self.table, "count_rows", None)
         if callable(count_rows) and count_rows() == 0:
+            emit("stage57.search", layer="experience", mode=mode.value, task=task, hits=0, empty=True)
             return []
 
         filters = [f"score >= {float(min_score)}"]
@@ -173,7 +175,15 @@ class ExperienceRepository:
             )
 
         ranked.sort(key=lambda item: item.rank_score, reverse=True)
-        return ranked[:top_k]
+        trimmed = ranked[:top_k]
+        emit(
+            "stage57.search",
+            layer="experience",
+            mode=mode.value,
+            task=task,
+            hits=len(trimmed),
+        )
+        return trimmed
 
     def delete(self, experience_id: str) -> None:
         experience_id = _require_text(experience_id, "experience_id")

@@ -14,6 +14,7 @@ from memory_engine.providers.bailian import (
     qwen_embedding_dimension,
     qwen_embedding_model,
 )
+from app.observability.trace import emit, span
 
 
 class MockEmbeddingProvider(EmbeddingProvider):
@@ -23,6 +24,17 @@ class MockEmbeddingProvider(EmbeddingProvider):
         self.dim = dim
 
     async def embed(self, text: str) -> list[float]:
+        with span("embed.forward"):
+            vector = await self._embed(text)
+            emit(
+                "embed.forward",
+                provider="mock",
+                text_len=len(text),
+                dim=self.dim,
+            )
+            return vector
+
+    async def _embed(self, text: str) -> list[float]:
         vector = [0.0] * self.dim
         normalized = "".join(text.lower().split())
         tokens = set(text.lower().split())
@@ -58,10 +70,18 @@ class QwenEmbeddingProvider(EmbeddingProvider):
         self.dim = self._adapter.dimension
 
     async def embed(self, text: str) -> list[float]:
-        return await asyncio.to_thread(
-            self._adapter.embed,
-            MultimodalInput.text(text),
-        )
+        with span("embed.forward"):
+            vector = await asyncio.to_thread(
+                self._adapter.embed,
+                MultimodalInput.text(text),
+            )
+            emit(
+                "embed.forward",
+                provider="qwen",
+                text_len=len(text),
+                dim=self.dim,
+            )
+            return vector
 
 
 def build_embedding_provider(settings: Settings) -> EmbeddingProvider:
