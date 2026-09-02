@@ -13,6 +13,7 @@ EXPERIENCE_TABLE_NAME = "experiences"
 ARTIFACT_TABLE_NAME = "artifact_memories"
 IMAGE_TABLE_NAME = "image_memories"
 QWEN_MULTIMODAL_TABLE_NAME = "qwen_multimodal_memories"
+SERVICE_TABLE_NAME = "service_memories"
 
 
 def memories_schema(dimension: int) -> pa.Schema:
@@ -256,4 +257,45 @@ def open_qwen_multimodal_table(
     return db.create_table(
         table_name,
         schema=qwen_multimodal_schema(dimension),
+    )
+
+
+def service_memories_schema(dimension: int) -> pa.Schema:
+    """
+    service_memories：Stage 9 HTTP 服务专用表。
+
+    与 Stage 5 memories（ST 384-d）以及 Qwen3-VL fusion 表分开。
+    """
+
+    return pa.schema(
+        [
+            pa.field("id", pa.string()),
+            pa.field("content", pa.string()),
+            pa.field("memory_type", pa.string()),
+            pa.field("importance", pa.float32()),
+            pa.field("metadata_json", pa.string()),
+            pa.field(
+                "vector",
+                pa.list_(pa.float32(), dimension),
+            ),
+            pa.field("created_at", pa.string()),
+            pa.field("updated_at", pa.string()),
+        ]
+    )
+
+
+def open_service_memories_table(
+    *,
+    dimension: int,
+    db_path: str = DEFAULT_DB_PATH,
+    table_name: str = SERVICE_TABLE_NAME,
+) -> Table:
+    db = lancedb.connect(db_path)
+
+    if table_name in db:
+        return db.open_table(table_name)
+
+    return db.create_table(
+        table_name,
+        schema=service_memories_schema(dimension),
     )

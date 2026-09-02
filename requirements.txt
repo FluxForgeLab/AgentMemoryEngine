@@ -7,3 +7,8 @@ pypdf
 pytest
 requests
 python-dotenv
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+httpx

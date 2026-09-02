@@ -7,6 +7,7 @@ from .lance import (
     EXPERIENCE_TABLE_NAME,
     IMAGE_TABLE_NAME,
     QWEN_MULTIMODAL_TABLE_NAME,
+    SERVICE_TABLE_NAME,
     artifact_schema,
     experiences_schema,
     image_schema,
@@ -16,7 +17,9 @@ from .lance import (
     open_image_table,
     open_memories_table,
     open_qwen_multimodal_table,
+    open_service_memories_table,
     qwen_multimodal_schema,
+    service_memories_schema,
 )
 
 __all__ = [
@@ -26,6 +29,7 @@ __all__ = [
     "EXPERIENCE_TABLE_NAME",
     "IMAGE_TABLE_NAME",
     "QWEN_MULTIMODAL_TABLE_NAME",
+    "SERVICE_TABLE_NAME",
     "artifact_schema",
     "experiences_schema",
     "image_schema",
@@ -35,5 +39,7 @@ __all__ = [
     "open_image_table",
     "open_memories_table",
     "open_qwen_multimodal_table",
+    "open_service_memories_table",
     "qwen_multimodal_schema",
+    "service_memories_schema",
 ]
