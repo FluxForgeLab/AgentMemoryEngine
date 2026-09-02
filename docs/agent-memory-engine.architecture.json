@@ -1,0 +1,136 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Agent Memory Engine — Stage 10",
+    "subtitle": "Agent 上下文准备、分层检索、向量化与 LanceDB 持久化",
+    "output": "agent-memory-engine.architecture.html",
+    "animation": "none",
+    "visual_preset": "blueprint",
+    "quality_profile": "showcase",
+    "views": [
+      {
+        "id": "agent-context",
+        "label": "Agent 上下文链路",
+        "focus": ["caller", "fastapi", "harness", "memoryCore", "repository", "lancedb"],
+        "note": "从任务进入 RetrieveGate/Planner，到检索结果被拼装成 memory_context。"
+      },
+      {
+        "id": "memory-write",
+        "label": "Memory 写入链路",
+        "focus": ["caller", "fastapi", "memoryCore", "embeddingAdapter", "bailian", "repository", "lancedb"],
+        "note": "CRUD 与向量生成由 MemoryManager 协调，并持久化到独立 service_memories 表。"
+      },
+      {
+        "id": "search-routing",
+        "label": "检索路由",
+        "focus": ["memoryCore", "embeddingAdapter", "repository"],
+        "note": "keyword、vector、hybrid 与 agentic 路由共享 Repository 和 EmbeddingProvider 端口。"
+      }
+    ],
+    "viewBox": [1420, 860]
+  },
+  "components": [
+    {
+      "id": "caller",
+      "type": "external",
+      "label": "Agent / API Client",
+      "sublabel": "HTTP JSON",
+      "pos": [40, 330],
+      "size": [150, 68]
+    },
+    {
+      "id": "fastapi",
+      "type": "frontend",
+      "label": "FastAPI API",
+      "sublabel": "/v1 endpoints",
+      "pos": [250, 330],
+      "size": [150, 68]
+    },
+    {
+      "id": "harness",
+      "type": "backend",
+      "label": "Agent Harness",
+      "sublabel": "Gate → Plan → Context",
+      "pos": [500, 120],
+      "size": [190, 76]
+    },
+    {
+      "id": "memoryCore",
+      "type": "backend",
+      "label": "Memory Application Core",
+      "sublabel": "Service · Manager · SearchRouter · Strategies",
+      "tag": "ports and adapters",
+      "pos": [470, 330],
+      "size": [250, 84]
+    },
+    {
+      "id": "embeddingAdapter",
+      "type": "cloud",
+      "label": "Embedding Adapter",
+      "sublabel": "Qwen or deterministic mock",
+      "pos": [820, 570],
+      "size": [210, 76]
+    },
+    {
+      "id": "repository",
+      "type": "backend",
+      "label": "LanceDB Repository",
+      "sublabel": "domain port adapter",
+      "pos": [820, 330],
+      "size": [190, 76]
+    },
+    {
+      "id": "lancedb",
+      "type": "database",
+      "label": "LanceDB",
+      "sublabel": "service_memories",
+      "tag": "embedded vector store",
+      "pos": [1110, 330],
+      "size": [190, 76]
+    },
+    {
+      "id": "bailian",
+      "type": "external",
+      "label": "Alibaba Bailian",
+      "sublabel": "qwen3-vl-embedding",
+      "pos": [1110, 570],
+      "size": [210, 68]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Stage 10 FastAPI service process",
+      "wraps": ["fastapi", "harness", "memoryCore", "embeddingAdapter", "repository"],
+      "pad": 28
+    }
+  ],
+  "connections": [
+    {"id": "httpRequest", "from": "caller", "to": "fastapi", "label": "HTTP", "variant": "emphasis"},
+    {"id": "prepareContext", "from": "fastapi", "to": "harness", "label": "prepare context", "fromSide": "top", "toSide": "left"},
+    {"id": "apiMemoryCalls", "from": "fastapi", "to": "memoryCore"},
+    {"id": "harnessMemoryClient", "from": "harness", "to": "memoryCore", "fromSide": "bottom", "toSide": "top", "variant": "emphasis"},
+    {"id": "coreRepository", "from": "memoryCore", "to": "repository"},
+    {"id": "repositoryStorage", "from": "repository", "to": "lancedb"},
+    {"id": "coreEmbedding", "from": "memoryCore", "to": "embeddingAdapter", "fromSide": "bottom", "toSide": "left"},
+    {"id": "embeddingProvider", "from": "embeddingAdapter", "to": "bailian", "variant": "dashed"}
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Agent context path",
+      "items": ["RetrieveGate decides whether retrieval is needed", "RetrievalPlanner emits a stable RetrievalPlan", "MemoryContextBuilder formats selected memories"]
+    },
+    {
+      "dot": "violet",
+      "title": "Search policy",
+      "items": ["SearchRouter dispatches by SearchMethod", "Hybrid search fuses vector and keyword ranks", "Agentic search can expand queries when results are insufficient"]
+    },
+    {
+      "dot": "emerald",
+      "title": "Persistence",
+      "items": ["LanceDBMemoryRepository implements the domain port", "Stage 9/10 data uses the isolated service_memories table", "Production embeddings use Bailian; tests select the local mock"]
+    }
+  ]
+}

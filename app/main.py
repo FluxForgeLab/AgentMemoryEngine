@@ -13,9 +13,9 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Agent Memory Engine",
-    version="0.9.0",
-    description="Stage 9: Memory API Service",
+    title="Agent Memory Engine - Stage 10",
+    version="0.10.0",
+    description="RetrieveGate + RetrievalPlanner + SearchRouter",
     lifespan=lifespan,
 )
 

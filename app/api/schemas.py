@@ -5,7 +5,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.domain.models import MemoryType
+from app.domain.models import MemoryType, SearchMethod
 
 
 class MemoryCreateRequest(BaseModel):
@@ -22,18 +22,17 @@ class MemoryUpdateRequest(BaseModel):
     metadata: dict[str, Any] | None = None
 
 
-class SearchOptions(BaseModel):
-    vector: bool = True
-    keyword: bool = True
-
-
 class MemorySearchRequest(BaseModel):
     query: str = Field(min_length=1)
-    top_k: int = Field(default=5, ge=1, le=100)
+    method: SearchMethod = SearchMethod.hybrid
     memory_types: list[MemoryType] | None = None
+    top_k: int = Field(default=5, ge=1, le=50)
     filters: dict[str, Any] | None = None
-    search: SearchOptions = Field(default_factory=SearchOptions)
-    rerank: bool = True
+
+
+class PrepareContextRequest(BaseModel):
+    task: str = Field(min_length=1)
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 class MemoryResponse(BaseModel):
@@ -44,20 +43,3 @@ class MemoryResponse(BaseModel):
     metadata: dict[str, Any]
     created_at: datetime
     updated_at: datetime
-
-
-class SearchResult(BaseModel):
-    id: str
-    content: str
-    memory_type: str
-    importance: float
-    metadata: dict[str, Any]
-    score: float
-    vector_score: float | None = None
-    keyword_score: float | None = None
-    rerank_score: float | None = None
-
-
-class MemorySearchResponse(BaseModel):
-    query: str
-    results: list[SearchResult]

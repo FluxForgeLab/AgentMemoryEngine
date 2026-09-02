@@ -3,20 +3,20 @@ from __future__ import annotations
 from typing import Any
 
 from app.application.memory_manager import MemoryManager
-from app.domain.models import Memory, MemoryType
-from app.retrieval.pipeline import RetrievalPipeline
+from app.domain.models import Memory, MemoryType, SearchMethod
+from app.memory.search.router import SearchRouter
 
 
 class MemoryService:
-    """Application layer: orchestrates complete memory use cases."""
+    """Application layer：CRUD 与 SearchRouter 的稳定入口。"""
 
     def __init__(
         self,
         manager: MemoryManager,
-        retriever: RetrievalPipeline,
+        search_router: SearchRouter,
     ):
         self.manager = manager
-        self.retriever = retriever
+        self.search_router = search_router
 
     async def store_memory(
         self,
@@ -37,21 +37,17 @@ class MemoryService:
         self,
         *,
         query: str,
+        method: SearchMethod,
         top_k: int,
         memory_types: list[MemoryType] | None,
         filters: dict[str, Any] | None,
-        use_vector: bool,
-        use_keyword: bool,
-        rerank: bool,
     ) -> list[dict[str, Any]]:
-        return await self.retriever.search(
+        return await self.search_router.search(
             query=query,
+            method=method,
             top_k=top_k,
             memory_types=memory_types,
             filters=filters,
-            use_vector=use_vector,
-            use_keyword=use_keyword,
-            rerank=rerank,
         )
 
     async def get_memory(self, memory_id: str) -> Memory | None:

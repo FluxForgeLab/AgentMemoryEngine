@@ -16,6 +16,18 @@ class MemoryType(str, Enum):
     experience = "experience"
 
 
+class SearchMethod(str, Enum):
+    keyword = "keyword"
+    vector = "vector"
+    hybrid = "hybrid"
+    agentic = "agentic"
+
+
+class GateDecision(str, Enum):
+    retrieve = "retrieve"
+    skip = "skip"
+
+
 class Memory(BaseModel):
     id: str
     content: str
@@ -47,3 +59,20 @@ class Memory(BaseModel):
             created_at=now,
             updated_at=now,
         )
+
+
+class RetrieveGateResult(BaseModel):
+    decision: GateDecision
+    score: float = Field(ge=0.0, le=1.0)
+    reasons: list[str] = Field(default_factory=list)
+
+
+class RetrievalPlan(BaseModel):
+    should_retrieve: bool
+    method: SearchMethod | None = None
+    memory_types: list[MemoryType] = Field(default_factory=list)
+    queries: list[str] = Field(default_factory=list)
+    top_k: int = 5
+    filters: dict[str, Any] = Field(default_factory=dict)
+    budget_chars: int = 3500
+    profile: str = "none"

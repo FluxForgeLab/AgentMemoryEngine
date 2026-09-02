@@ -1,8 +1,8 @@
-from app.api.dependencies import get_memory_service
+from app.api.dependencies import get_agent_harness, get_memory_service
 from app.config import get_settings
 
 
-def test_create_and_search_memory(tmp_path, monkeypatch):
+def _isolate_service(tmp_path, monkeypatch):
     monkeypatch.setenv("MEMORY_DB_PATH", str(tmp_path / "lance"))
     monkeypatch.setenv("MEMORY_TABLE_NAME", "service_memories")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "mock")
@@ -10,6 +10,11 @@ def test_create_and_search_memory(tmp_path, monkeypatch):
     monkeypatch.setenv("EMBEDDING_DIM", "32")
     get_settings.cache_clear()
     get_memory_service.cache_clear()
+    get_agent_harness.cache_clear()
+
+
+def test_create_and_search_memory(tmp_path, monkeypatch):
+    _isolate_service(tmp_path, monkeypatch)
 
     from fastapi.testclient import TestClient
 
@@ -20,6 +25,7 @@ def test_create_and_search_memory(tmp_path, monkeypatch):
     health = client.get("/v1/health")
     assert health.status_code == 200
     assert health.json()["status"] == "ok"
+    assert health.json()["stage"] == 10
 
     created = client.post(
         "/v1/memories",
@@ -37,13 +43,16 @@ def test_create_and_search_memory(tmp_path, monkeypatch):
         "/v1/memories/search",
         json={
             "query": "为什么 Planner 需要 Research 阶段？",
+            "method": "hybrid",
             "top_k": 5,
             "memory_types": ["reflection"],
             "filters": {"project": "harness"},
-            "rerank": True,
         },
     )
     assert searched.status_code == 200
-    results = searched.json()["results"]
+    body = searched.json()
+    assert body["method"] == "hybrid"
+    results = body["results"]
     assert results
     assert results[0]["id"] == memory_id
+    assert results[0]["route"].startswith("hybrid:")

@@ -17,14 +17,19 @@ from memory_engine.providers.bailian import (
 
 
 class MockEmbeddingProvider(EmbeddingProvider):
-    """Deterministic local embedding for architecture testing."""
+    """可离线运行的稳定 embedding；支持中文字符 2-gram。"""
 
     def __init__(self, dim: int = 1024):
         self.dim = dim
 
     async def embed(self, text: str) -> list[float]:
         vector = [0.0] * self.dim
-        tokens = text.lower().split()
+        normalized = "".join(text.lower().split())
+        tokens = set(text.lower().split())
+        tokens.update(
+            normalized[i : i + 2]
+            for i in range(max(0, len(normalized) - 1))
+        )
 
         if not tokens:
             return vector
@@ -40,7 +45,7 @@ class MockEmbeddingProvider(EmbeddingProvider):
 
 
 class QwenEmbeddingProvider(EmbeddingProvider):
-    """Stage 9 HTTP 使用与 02 相同的 qwen3-vl-embedding。"""
+    """Stage 9/10 HTTP 使用与 02 相同的 qwen3-vl-embedding。"""
 
     def __init__(self, settings: Settings | None = None):
         client = BailianClient(BailianConfig.from_env())

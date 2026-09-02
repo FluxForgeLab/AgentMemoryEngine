@@ -180,25 +180,24 @@ class LanceDBMemoryRepository(MemoryRepository):
         if _is_empty_table(self.table):
             return []
 
+        # Stage 10：database-agnostic 中文 2-gram lexical；不混入 Stage 5-8 的 FTS 空间。
         def _all_rows():
             return self.table.search().limit(10000).to_list()
 
         rows = await asyncio.to_thread(_all_rows)
-        terms = [t for t in query.lower().split() if t]
+        grams = _lexical_grams(query)
 
         scored = []
         for row in rows:
             if not self._passes_filters(row, memory_types, filters):
                 continue
 
-            content = row["content"].lower()
+            content = "".join(row["content"].lower().split())
+            if not grams:
+                continue
 
-            if not terms:
-                score = 0.0
-            else:
-                hits = sum(content.count(term) for term in terms)
-                score = hits / len(terms)
-
+            hits = sum(1 for gram in grams if gram in content)
+            score = hits / len(grams)
             if score <= 0:
                 continue
 
@@ -213,6 +212,14 @@ class LanceDBMemoryRepository(MemoryRepository):
 
         scored.sort(key=lambda x: x["keyword_score"], reverse=True)
         return scored[:limit]
+
+
+def _lexical_grams(query: str) -> set[str]:
+    normalized = "".join(query.lower().split())
+    return {
+        normalized[i : i + 2]
+        for i in range(max(0, len(normalized) - 1))
+    }
 
 
 def _sql(value: str) -> str:
