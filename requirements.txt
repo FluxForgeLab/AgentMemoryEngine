@@ -1,10 +1,1 @@
-lancedb
-pyarrow
-pytest
-requests
-python-dotenv
-fastapi
-uvicorn[standard]
-pydantic
-pydantic-settings
-httpx
+-r requirements-dev.txt
