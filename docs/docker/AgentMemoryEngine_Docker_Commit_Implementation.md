@@ -1,9 +1,9 @@
 # Agent Memory Engine Docker 部署实施文档
 
-> 蓝本：[AgentMemoryEngine_Docker_Deployment_Implementation_Plan.md](./AgentMemoryEngine_Docker_Deployment_Implementation_Plan.md)  
-> 仓库：`SamhandsomeLee/AgentMemoryEngine`  
-> 分支：`master`  
-> 主线：Stage 10（`app.main:app` + LanceDB `service_memories` + Qwen / mock embedding）  
+> 蓝本：[AgentMemoryEngine_Docker_Deployment_Implementation_Plan.md](./AgentMemoryEngine_Docker_Deployment_Implementation_Plan.md)
+> 仓库：`SamhandsomeLee/AgentMemoryEngine`
+> 分支：`master`
+> 主线：Stage 10（`app.main:app` + LanceDB `service_memories` + Qwen / mock embedding）
 > 本文定位：**按 commit 落地的施工单**，不是再写一份设计方案。
 
 ---
@@ -20,7 +20,7 @@
 
 蓝本附录 F 曾建议打包成 3 个大提交。那是阶段切分，不是本文的施工粒度。
 
-本文把同一条主线拆成可独立 review、可独立回滚的原子 commit。PR 仍按 Track 合并，但 **git history 不允许把多个功能点揉进一次提交**。
+本文把同一条主线拆成可独立 review、可独立回滚的原子 commit。PR 仍按Track 合并，但 **git history 不允许把多个功能点揉进一次提交**。
 
 ```text
 蓝本 Implementation Plan
@@ -34,6 +34,8 @@
 
 ---
 
+
+
 ## 1. 实施原则
 
 1. **先 P0，后 P1，再 P2。** 前一条 commit 未验收，不开始下一条。
@@ -42,31 +44,37 @@
 4. **生产入口只有** `uvicorn app.main:app --host 0.0.0.0 --port 8000`。根目录 `main.py` 不是 Docker CMD。
 5. **一条 commit 结束时，仓库必须可解释：** 多了什么能力、怎么验证、失败时回滚哪一条。
 6. **Windows 与 Linux 用同一套文件。** 脚本用 Python 标准库，避免只写 bash。
-7. **不要用 `docker compose down -v` 做日常重启。** `-v` 会删 LanceDB volume。
+7. **不要用** `docker compose down -v` **做日常重启。** `-v` 会删 LanceDB volume。
 
 ---
+
+
 
 ## 2. 当前仓库基线（施工前事实）
 
 以撰写本文时的 `master` 为准：
 
-| 项 | 现状 |
-|---|---|
-| HTTP 入口 | `app.main:app`，lifespan 会立刻 `get_memory_service()` |
-| 健康检查 | `GET /v1/health` → `{"status":"ok","stage":10}`，只证明进程活着 |
-| 默认库路径 | `MEMORY_DB_PATH=./database/lance` |
-| Stage 10 表 | `service_memories` |
-| 默认 embedding | `EMBEDDING_PROVIDER=qwen`，维度 1024 |
-| 离线 embedding | `mock` + `EMBEDDING_DIM=32`，必须换目录，不能和 1024 维表混用 |
-| 根目录 Docker 文件 | **不存在** `Dockerfile` / `docker-compose.yml` / `.dockerignore` |
-| CI | **不存在** `.github/workflows/` |
-| `requirements.txt` | 运行时与实验依赖混在一起（含 `sentence-transformers` / `open-clip-torch`） |
-| Stage 10 import | HTTP 主链 **不** import torch / OpenCLIP / pypdf |
-| 现有 Docker 教程 | `docs/docker/Docker_Agent_Memory_Engine_从第一性原理到实践.md` 是学习文档，**不要改它来充当生产部署** |
+
+| 项                  | 现状                                                                          |
+| ------------------ | --------------------------------------------------------------------------- |
+| HTTP 入口            | `app.main:app`，lifespan 会立刻 `get_memory_service()`                          |
+| 健康检查               | `GET /v1/health` → `{"status":"ok","stage":10}`，只证明进程活着                     |
+| 默认库路径              | `MEMORY_DB_PATH=./database/lance`                                           |
+| Stage 10 表         | `service_memories`                                                          |
+| 默认 embedding       | `EMBEDDING_PROVIDER=qwen`，维度 1024                                           |
+| 离线 embedding       | `mock` + `EMBEDDING_DIM=32`，必须换目录，不能和 1024 维表混用                             |
+| 根目录 Docker 文件      | **不存在** `Dockerfile` / `docker-compose.yml` / `.dockerignore`               |
+| CI                 | **不存在** `.github/workflows/`                                                |
+| `requirements.txt` | 运行时与实验依赖混在一起（含 `sentence-transformers` / `open-clip-torch`）                 |
+| Stage 10 import    | HTTP 主链 **不** import torch / OpenCLIP / pypdf                               |
+| 现有 Docker 教程       | `docs/docker/Docker_Agent_Memory_Engine_从第一性原理到实践.md` 是学习文档，**不要改它来充当生产部署** |
+
 
 P0 构建会很慢、镜像会很大。这是依赖混装造成的，**不在 C01–C09 解决**。
 
 ---
+
+
 
 ## 3. Commit 总账
 
@@ -115,9 +123,13 @@ flowchart TB
     C15 --> C16 --> C17 --> C18 --> C19
 ```
 
+
+
 P3（K8s、多实例抢同一个 LanceDB volume、远程向量库）**不立项**。出现真实需求后再单独开文档。
 
 ---
+
+
 
 ## 4. Git 执行规则
 
@@ -166,6 +178,8 @@ git revert <sha>
 
 ---
 
+
+
 ## 5. G0 · 前置门槛（无 commit）
 
 **功能点：** 确认当前源码在容器化之前就是绿的。失败则停止，不把业务 bug 带进 Docker。
@@ -189,6 +203,8 @@ python -m pytest -q \
 
 ---
 
+
+
 # Track 1 · P0 最小可运行
 
 目标：`docker compose up -d` 之后，宿主机 `8000` 能访问 Stage 10 API，LanceDB 与日志走 named volume。
@@ -196,6 +212,8 @@ python -m pytest -q \
 本 Track 结束时 **还不用** 接真实百炼。那是 C08 之后的手工步骤，不是独立业务 commit。
 
 ---
+
+
 
 ## C01 · 构建上下文隔离
 
@@ -250,6 +268,8 @@ feat(deploy): exclude secrets and local data from Docker build context
 ```
 
 ---
+
+
 
 ## C02 · 可构建的 Stage 10 镜像
 
@@ -339,6 +359,8 @@ feat(deploy): add Dockerfile for Stage 10 FastAPI entrypoint
 
 ---
 
+
+
 ## C03 · Compose 编排与数据卷
 
 **功能点：** 一条命令启动服务；LanceDB 与应用日志落到 named volume，代码与数据分离。
@@ -397,7 +419,7 @@ docker compose logs --tail=80 agent-memory-engine
 curl http://127.0.0.1:8000/v1/health
 ```
 
-`ps` 中容器应为 running。若 `.env` 仍是 `EMBEDDING_PROVIDER=qwen` 且没有密钥，lifespan 可能启动失败——这是源码的既有行为。此时把 `.env` 临时改为 mock 只为验证 C03，**不要把个人 `.env` 提交进去**。更干净的做法是做完 C03 验收后停服务，等 C07 overlay。
+`ps` 中容器应为 running。若 `.env` 仍是 `EMBEDDING_PROVIDER=qwen` 且没有密钥，lifespan 可能启动失败——这是源码的既有行为。此时把 `.env` 临时改为 mock 只为验证 C03，**不要把个人** `.env` **提交进去**。更干净的做法是做完 C03 验收后停服务，等 C07 overlay。
 
 ```bash
 docker compose down
@@ -412,6 +434,8 @@ feat(deploy): add compose service with LanceDB and log volumes
 ```
 
 ---
+
+
 
 ## C04 · 容器存活探测
 
@@ -465,6 +489,8 @@ feat(deploy): add compose liveness check against /v1/health
 
 ---
 
+
+
 ## C05 · Docker 环境变量约定
 
 **功能点：** `.env.example` 写清本地路径与容器路径、qwen 与 mock 不得共用库目录，避免后来者把 32 维 mock 写进 1024 维表。
@@ -504,6 +530,8 @@ docs(deploy): document Docker and mock embedding env contract
 
 ---
 
+
+
 ## C06 · README 启动入口
 
 **功能点：** 使用者不用读 2900 行蓝本，也能按 README 把 Stage 10 API 跑进 Docker。
@@ -524,10 +552,10 @@ README.md              （新增「Docker」小节，不要重写全篇）
 docker compose up -d --build
 ```
 
-4. 验证 URL：`/v1/health`、`/docs`、`/openapi.json`
-5. 日志：`docker compose logs -f agent-memory-engine`
-6. 停止：`docker compose down`（明确不要日常使用 `-v`）
-7. 提醒：根目录 `main.py` 不是容器入口
+1. 验证 URL：`/v1/health`、`/docs`、`/openapi.json`
+2. 日志：`docker compose logs -f agent-memory-engine`
+3. 停止：`docker compose down`（明确不要日常使用 `-v`）
+4. 提醒：根目录 `main.py` 不是容器入口
 
 为了 PR-A 自洽，C06 可以先写 **不带 mock overlay** 的最小启动，并写明：没有百炼密钥时把 `.env` 中 `EMBEDDING_PROVIDER` 设为 `mock`，同时换独立数据目录。C07 落地后，再允许 **单独一条文档修正 commit 是禁止的**——若 README 必须提到 overlay，把 overlay 文件名写成即将到来的 `docker-compose.mock.yml`，C07 负责让这个文件存在。更干净的做法：**C06 只写生产 compose 路径；C07 的 commit 再给 README 加 5 行 mock 用法。**
 
@@ -555,11 +583,15 @@ docs(deploy): add Docker Compose quickstart to README
 
 ---
 
+
+
 # Track 2 · P0 验收资产
 
 目标：第一次 Docker 验证与百炼网络故障解耦；CRUD / Harness / volume 持久化可重复执行。
 
 ---
+
+
 
 ## C07 · Mock Compose overlay
 
@@ -572,7 +604,7 @@ docker-compose.mock.yml    （新建）
 README.md                  （只补 mock 启动 5～10 行，这是本功能对用户可见的一部分）
 ```
 
-**`docker-compose.mock.yml`：**
+`docker-compose.mock.yml`**：**
 
 ```yaml
 services:
@@ -617,6 +649,8 @@ feat(deploy): add mock compose overlay with isolated LanceDB volume
 
 ---
 
+
+
 ## C08 · Docker API smoke
 
 **功能点：** 对已启动的容器跑一遍 health / CRUD / search / prepare-context，失败以非 0 退出。不依赖百炼。
@@ -655,6 +689,8 @@ test(deploy): add offline Docker smoke for Stage 10 API
 ```
 
 ---
+
+
 
 ## C09 · Volume 持久化检查
 
@@ -700,6 +736,8 @@ test(deploy): verify LanceDB named volume survives compose down
 
 ---
 
+
+
 ### Track 1–2 手工收口（不新增 commit）
 
 C09 通过后，才允许在本机 `.env` 填百炼密钥，用 **不带** mock overlay 的 compose 接 Qwen：
@@ -713,13 +751,17 @@ python scripts/docker_smoke.py
 
 ---
 
+
+
 # Track 3 · P1 依赖收敛
 
 目标：生产镜像不再为早期多模态实验买单；构建可重复。
 
-开始前再跑一次 G0 的 pytest。C10 允许新增文件，但 **Dockerfile 仍暂用旧 `requirements.txt`，留给 C11**。这样才能在「依赖清单」和「镜像真正变小」之间单独 bisect。
+开始前再跑一次 G0 的 pytest。C10 允许新增文件，但 **Dockerfile 仍暂用旧** `requirements.txt`**，留给 C11**。这样才能在「依赖清单」和「镜像真正变小」之间单独 bisect。
 
 ---
+
+
 
 ## C10 · 拆分依赖清单
 
@@ -734,7 +776,7 @@ requirements-experimental.txt
 requirements.txt          （改为转发，避免旧文档命令立刻坏掉）
 ```
 
-**`requirements-runtime.txt`（本步先不钉版本）：**
+`requirements-runtime.txt`**（本步先不钉版本）：**
 
 ```text
 lancedb
@@ -748,14 +790,14 @@ pydantic-settings
 httpx
 ```
 
-**`requirements-dev.txt`：**
+`requirements-dev.txt`**：**
 
 ```text
 -r requirements-runtime.txt
 pytest
 ```
 
-**`requirements-experimental.txt`：**
+`requirements-experimental.txt`**：**
 
 ```text
 -r requirements-runtime.txt
@@ -765,7 +807,7 @@ Pillow
 pypdf
 ```
 
-**`requirements.txt`：** 保持安装「当前开发者一键装齐」的行为，避免 C10 破坏 README 里的 `pip install -r requirements.txt`：
+`requirements.txt`**：** 保持安装「当前开发者一键装齐」的行为，避免 C10 破坏 README 里的 `pip install -r requirements.txt`：
 
 ```text
 -r requirements-experimental.txt
@@ -807,6 +849,8 @@ refactor(deps): split runtime, dev, and experimental Python requirements
 ```
 
 ---
+
+
 
 ## C11 · 生产镜像只装运行时
 
@@ -873,6 +917,8 @@ feat(deploy): build production image from runtime requirements only
 
 ---
 
+
+
 ## C12 · 锁定运行时版本
 
 **功能点：** 今天 build 与三个月后 build 安装同一组依赖版本。
@@ -905,9 +951,13 @@ chore(deps): pin runtime dependencies for reproducible images
 
 ---
 
+
+
 # Track 4 · P1 安全、备份、CI
 
 ---
+
+
 
 ## C13 · 非 root 运行
 
@@ -980,6 +1030,8 @@ feat(deploy): run Stage 10 container as non-root
 
 ---
 
+
+
 ## C14 · LanceDB volume 备份与恢复
 
 **功能点：** `/data/lance`（以及 mock 的 `/data/lance_mock`）可打包、可恢复。镜像升级不等于数据迁移。
@@ -1004,6 +1056,8 @@ feat(deploy): add LanceDB volume backup and restore scripts
 ```
 
 ---
+
+
 
 ## C15 · CI：pytest + Docker smoke
 
@@ -1035,11 +1089,15 @@ ci: run Stage 10 tests and mock Docker smoke on push
 
 ---
 
+
+
 # Track 5 · P2 生产化（P0/P1 完成前禁止开工）
 
 以下每条仍然是「一功能一 commit」，但它们会碰到 API 设计、证书和发布渠道。未完成 Track 4 不要开始。
 
 ---
+
+
 
 ## C16 · liveness / readiness 分离
 
@@ -1067,6 +1125,8 @@ feat(api): split liveness and readiness health endpoints
 
 ---
 
+
+
 ## C17 · HTTPS 反向代理
 
 **功能点：** 公网只暴露 80/443，AME 只在 Docker 网络内 `expose: 8000`。
@@ -1092,6 +1152,8 @@ feat(deploy): add Caddy overlay so the API is not published on :8000
 
 ---
 
+
+
 ## C18 · 生产 Compose（跑版本镜像，不在服务器上 build）
 
 **功能点：** 生产以 `image: ...:${AME_VERSION}` 启动，而不是在服务器 `build: .`。
@@ -1113,6 +1175,8 @@ feat(deploy): add production compose that runs versioned images
 
 ---
 
+
+
 ## C19 · 版本化镜像发布
 
 **功能点：** CI 把通过 smoke 的镜像推到仓库，tag 为 `0.10.0` 与 `git-<short-sha>`。禁止只发布 `latest`。
@@ -1131,33 +1195,41 @@ ci: publish versioned Stage 10 images with git SHA tags
 
 ---
 
+
+
 ## 明确不在本施工单拆 commit 的事
 
 这些不是「下一步 Docker commit」，需要单独设计：
 
-| 主题 | 原因 |
-|---|---|
-| Auth / JWT / mTLS | 业务安全设计，不是容器文件 |
-| `--workers 4` 或多副本抢同一 LanceDB volume | 嵌入式库没有单 writer 协调 |
-| Kubernetes / Helm | MVP 不匹配 |
-| Prometheus / OTel | 可观测性演进，等 C16 之后单独立项 |
-| `service_memories` schema 迁移 | 镜像升级 ≠ 数据迁移 |
-| 换 embedding 模型后原地复用 vector | 必须新表 `service_memories_v2` |
-| 修改 `docs/docker/Docker_Agent_Memory_Engine_从第一性原理到实践.md` | 学习教程，和生产施工分离 |
+
+| 主题                                                       | 原因                         |
+| -------------------------------------------------------- | -------------------------- |
+| Auth / JWT / mTLS                                        | 业务安全设计，不是容器文件              |
+| `--workers 4` 或多副本抢同一 LanceDB volume                     | 嵌入式库没有单 writer 协调          |
+| Kubernetes / Helm                                        | MVP 不匹配                    |
+| Prometheus / OTel                                        | 可观测性演进，等 C16 之后单独立项        |
+| `service_memories` schema 迁移                             | 镜像升级 ≠ 数据迁移                |
+| 换 embedding 模型后原地复用 vector                               | 必须新表 `service_memories_v2` |
+| 修改 `docs/docker/Docker_Agent_Memory_Engine_从第一性原理到实践.md` | 学习教程，和生产施工分离               |
+
 
 ---
+
+
 
 ## 6. PR 如何切，commit 如何保
 
 可以（也建议）按 Track 开 PR，但 **PR 内必须能看到本文的多条独立 commit**，不要 squash 成一个「add docker」除非用户明确要求。
 
-| PR | 包含 commit | 合并后仓库应具备 |
-|---|---|---|
-| PR-A | C01–C06 | 能 build、能 compose up、有文档 |
-| PR-B | C07–C09 | mock 离线验收 + 持久化证明 |
-| PR-C | C10–C12 | 小镜像 + 可重复依赖 |
-| PR-D | C13–C15 | 非 root + 备份 + CI |
-| PR-E | C16–C19 | 就绪探针 + HTTPS + 发布 |
+
+| PR   | 包含 commit | 合并后仓库应具备                 |
+| ---- | --------- | ------------------------ |
+| PR-A | C01–C06   | 能 build、能 compose up、有文档 |
+| PR-B | C07–C09   | mock 离线验收 + 持久化证明        |
+| PR-C | C10–C12   | 小镜像 + 可重复依赖              |
+| PR-D | C13–C15   | 非 root + 备份 + CI         |
+| PR-E | C16–C19   | 就绪探针 + HTTPS + 发布        |
+
 
 建议 PR 标题沿用蓝本：
 
@@ -1175,30 +1247,36 @@ refactor(deps): split runtime requirements for smaller images
 
 ---
 
+
+
 ## 7. 蓝本验收清单 × commit 映射
 
 施工时用这张表打勾。一个格子只应由对应 commit 闭合。
 
-| 验收项 | Commit |
-|---|---|
-| `docker compose build` 成功 | C02 + C03 |
-| 容器启动且不反复 restart | C03（mock 稳定态看 C07） |
-| Uvicorn 监听 `0.0.0.0:8000` | C02 |
-| `/v1/health` `/docs` `/openapi.json` | C02 / C06 |
-| Create / Get / Update / Delete / Search / Prepare Context | C08 |
-| `/data/lance` 存在，`service_memories` 可建 | C03 |
-| restart / recreate / `compose down` 后数据还在 | C09 |
-| Backup / restore | C14 |
-| mock provider | C07 + C08 |
-| Qwen provider | Track 2 手工收口，无独立 commit |
-| API Key 未进 image | C01 + C02 约束 |
-| Embedding 维度与表一致 | C05 + C07 |
-| `docker logs` 与 `/app/logs` volume | C03 |
-| `.env` 未 commit、未 COPY | C01、C05、`.gitignore` 已有 |
-| 生产不直接公开 8000 | C17 |
-| 未认证 API 仅可信网络 | C17 文档约束，Auth 另案 |
+
+| 验收项                                                       | Commit                  |
+| --------------------------------------------------------- | ----------------------- |
+| `docker compose build` 成功                                 | C02 + C03               |
+| 容器启动且不反复 restart                                          | C03（mock 稳定态看 C07）      |
+| Uvicorn 监听 `0.0.0.0:8000`                                 | C02                     |
+| `/v1/health` `/docs` `/openapi.json`                      | C02 / C06               |
+| Create / Get / Update / Delete / Search / Prepare Context | C08                     |
+| `/data/lance` 存在，`service_memories` 可建                    | C03                     |
+| restart / recreate / `compose down` 后数据还在                 | C09                     |
+| Backup / restore                                          | C14                     |
+| mock provider                                             | C07 + C08               |
+| Qwen provider                                             | Track 2 手工收口，无独立 commit |
+| API Key 未进 image                                          | C01 + C02 约束            |
+| Embedding 维度与表一致                                          | C05 + C07               |
+| `docker logs` 与 `/app/logs` volume                        | C03                     |
+| `.env` 未 commit、未 COPY                                    | C01、C05、`.gitignore` 已有 |
+| 生产不直接公开 8000                                              | C17                     |
+| 未认证 API 仅可信网络                                             | C17 文档约束，Auth 另案        |
+
 
 ---
+
+
 
 ## 8. 最终完成定义
 
@@ -1227,9 +1305,11 @@ python scripts/docker_persistence_check.py
 
 ---
 
+
+
 ## 9. 下一步实际开工顺序
 
-现在不要改业务代码。从 G0 开始，下一条代码变更必须是 **C01 的 `.dockerignore`**。
+现在不要改业务代码。从 G0 开始，下一条代码变更必须是 **C01 的** `.dockerignore`。
 
 ```text
 G0 pytest
