@@ -129,6 +129,28 @@ python -m uvicorn app.main:app --reload
 
 > 根目录的 `python main.py` 目前仍指向 Stage 8 多模态演示，不是 HTTP 服务入口。启动 API 请使用 `app.main:app`。
 
+## Docker
+
+需要本机已安装 Docker Desktop 或 Docker Engine。先把 `.env.example` 复制为 `.env` 并填写密钥。没有百炼密钥时，把 `.env` 里的 `EMBEDDING_PROVIDER` 设为 `mock`，并把 `EMBEDDING_DIM` 设为 `32`，同时使用独立的数据目录；不要把 32 维 mock 和 1024 维 qwen 指向同一个 LanceDB 目录。
+
+容器入口是 `uvicorn app.main:app`，不是根目录的 `python main.py`。Compose 会把 Stage 10 库放到 named volume `ame_lance_data`，容器内路径为 `/data/lance`；应用日志落到 `ame_logs`（`/app/logs`）。
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+curl http://127.0.0.1:8000/v1/health
+docker compose logs -f agent-memory-engine
+docker compose down
+```
+
+启动后可访问：
+
+- 健康检查：`http://127.0.0.1:8000/v1/health`
+- Swagger UI：`http://127.0.0.1:8000/docs`
+- OpenAPI JSON：`http://127.0.0.1:8000/openapi.json`
+
+日常停止用 `docker compose down`，不要加 `-v`。`-v` 会删掉 LanceDB volume。
+
 ## 配置
 
 复制 `.env.example` 为 `.env` 后填写配置：
