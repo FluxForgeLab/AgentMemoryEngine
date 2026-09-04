@@ -21,6 +21,19 @@ services:
       - ame_lance_data:/data/lance
       - ame_logs:/app/logs
 
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health', timeout=3)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
 volumes:
   ame_lance_data:
   ame_logs:
