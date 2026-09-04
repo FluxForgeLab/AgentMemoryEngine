@@ -1,0 +1,26 @@
+services:
+  agent-memory-engine:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: agent-memory-engine
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    environment:
+      MEMORY_DB_PATH: /data/lance
+      LOG_DIR: /app/logs
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ame_lance_data:/data/lance
+      - ame_logs:/app/logs
+
+volumes:
+  ame_lance_data:
+  ame_logs:
