@@ -31,7 +31,8 @@ jobs:
             tests/test_stage10_api.py \
             tests/test_retrieve_gate.py \
             tests/test_retrieval_planner.py \
-            tests/test_search_router.py
+            tests/test_search_router.py \
+            tests/test_health.py
 
       - name: Build image
         run: docker build -t agent-memory-engine:ci .

@@ -36,7 +36,7 @@ app.include_router(router)
 @app.middleware("http")
 async def trace_http(request: Request, call_next):
     path = request.url.path
-    if path == "/v1/health" or any(path.startswith(p) for p in _SKIP_PREFIXES):
+    if path == "/v1/health" or path.startswith("/v1/health/") or any(path.startswith(p) for p in _SKIP_PREFIXES):
         return await call_next(request)
 
     turn = request.headers.get("x-request-id") or bind_turn()

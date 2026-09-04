@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 
 from app.api.dependencies import get_agent_harness, get_memory_service
+from app.api.health import assess_readiness, legacy_health_payload, live_payload, readiness_body
 from app.api.schemas import (
     MemoryCreateRequest,
     MemoryResponse,
@@ -29,9 +31,23 @@ def to_response(memory) -> MemoryResponse:
     )
 
 
+@router.get("/health/live")
+async def health_live():
+    return live_payload()
+
+
+@router.get("/health/ready")
+async def health_ready():
+    result = assess_readiness()
+    return JSONResponse(
+        readiness_body(result),
+        status_code=status.HTTP_200_OK if result.ready else status.HTTP_503_SERVICE_UNAVAILABLE,
+    )
+
+
 @router.get("/health")
 async def health():
-    return {"status": "ok", "stage": 10}
+    return legacy_health_payload()
 
 
 @router.post("/memories", response_model=MemoryResponse, status_code=status.HTTP_201_CREATED)
