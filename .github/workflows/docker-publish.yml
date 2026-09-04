@@ -1,0 +1,89 @@
+name: docker-publish
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  AME_VERSION: "0.10.0"
+  LOCAL_TAG: agent-memory-engine:ci
+
+jobs:
+  test-build-smoke-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run Stage 10 tests
+        run: |
+          python -m pytest -q \
+            tests/test_stage9_api.py \
+            tests/test_stage10_api.py \
+            tests/test_retrieve_gate.py \
+            tests/test_retrieval_planner.py \
+            tests/test_search_router.py \
+            tests/test_health.py
+
+      - name: Build image
+        run: docker build -t "$LOCAL_TAG" .
+
+      - name: Start mock container
+        run: |
+          docker run -d --name agent-memory-engine -p 8000:8000 \
+            -e EMBEDDING_PROVIDER=mock \
+            -e EMBEDDING_DIM=32 \
+            -e MEMORY_DB_PATH=/tmp/lance \
+            -e AME_LOG_DISABLED=1 \
+            "$LOCAL_TAG"
+
+      - name: Docker API smoke
+        run: python scripts/docker_smoke.py
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push versioned images
+        run: |
+          set -euo pipefail
+          OWNER="$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          IMAGE="ghcr.io/${OWNER}/agent-memory-engine"
+          SHORT_SHA="${GITHUB_SHA::7}"
+          VERSION_REF="${IMAGE}:${AME_VERSION}"
+          GIT_REF="${IMAGE}:git-${SHORT_SHA}"
+
+          if [ "$AME_VERSION" = "latest" ] || [ "$SHORT_SHA" = "latest" ]; then
+            echo "refusing to publish a latest tag" >&2
+            exit 1
+          fi
+
+          docker tag "$LOCAL_TAG" "$VERSION_REF"
+          docker tag "$LOCAL_TAG" "$GIT_REF"
+          docker push "$VERSION_REF"
+          docker push "$GIT_REF"
+
+          echo "published ${VERSION_REF}"
+          echo "published ${GIT_REF}"
