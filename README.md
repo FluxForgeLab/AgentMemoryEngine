@@ -151,6 +151,14 @@ docker compose down
 
 日常停止用 `docker compose down`，不要加 `-v`。`-v` 会删掉 LanceDB volume。
 
+第一次离线验证用 mock overlay，不要改生产 compose 的默认 provider。mock 与 qwen 不得共用 volume：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.mock.yml up -d --build
+curl http://127.0.0.1:8000/v1/health
+docker compose -f docker-compose.yml -f docker-compose.mock.yml down
+```
+
 ## 配置
 
 复制 `.env.example` 为 `.env` 后填写配置：
