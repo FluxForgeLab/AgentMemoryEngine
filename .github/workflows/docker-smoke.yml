@@ -1,0 +1,49 @@
+name: docker-smoke
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Run Stage 10 tests
+        run: |
+          python -m pytest -q \
+            tests/test_stage9_api.py \
+            tests/test_stage10_api.py \
+            tests/test_retrieve_gate.py \
+            tests/test_retrieval_planner.py \
+            tests/test_search_router.py
+
+      - name: Build image
+        run: docker build -t agent-memory-engine:ci .
+
+      - name: Start mock container
+        run: |
+          docker run -d --name agent-memory-engine -p 8000:8000 \
+            -e EMBEDDING_PROVIDER=mock \
+            -e EMBEDDING_DIM=32 \
+            -e MEMORY_DB_PATH=/tmp/lance \
+            -e AME_LOG_DISABLED=1 \
+            agent-memory-engine:ci
+
+      - name: Docker API smoke
+        run: python scripts/docker_smoke.py
