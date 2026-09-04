@@ -1,0 +1,23 @@
+services:
+  agent-memory-engine:
+    ports: !reset []
+    expose:
+      - "8000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      agent-memory-engine:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

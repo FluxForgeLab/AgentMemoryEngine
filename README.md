@@ -159,6 +159,16 @@ curl http://127.0.0.1:8000/v1/health
 docker compose -f docker-compose.yml -f docker-compose.mock.yml down
 ```
 
+像生产一样只暴露 80/443 时，叠 Caddy overlay。这会取消宿主机的 `8000:8000`，API 只在 Docker 网络内监听 8000：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d --build
+curl http://127.0.0.1/v1/health
+docker compose -f docker-compose.yml -f docker-compose.proxy.yml down
+```
+
+有反向代理也不等于可以裸奔公网。当前 API 没有认证，`POST` / `PATCH` / `DELETE` 谁能打到 80 谁就能改记忆。Caddy overlay 只适合本机或可信私网；不要把 80/443 指到公网。JWT / API Key 不在 Docker 功能范围内。
+
 ## 配置
 
 复制 `.env.example` 为 `.env` 后填写配置：
