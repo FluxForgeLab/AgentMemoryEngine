@@ -6,12 +6,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY requirements-runtime.txt .
 
 RUN python -m pip install --upgrade pip \
-    && pip install -r requirements.txt
+    && pip install -r requirements-runtime.txt
 
-COPY . .
+COPY app ./app
+COPY memory_engine ./memory_engine
+COPY storage ./storage
 
 RUN mkdir -p /data/lance /app/logs
 
