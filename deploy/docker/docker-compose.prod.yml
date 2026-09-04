@@ -1,0 +1,67 @@
+name: agent-memory-engine
+
+services:
+  agent-memory-engine:
+    image: ghcr.io/YOUR_ORG/agent-memory-engine:${AME_VERSION:?AME_VERSION is required}
+    container_name: agent-memory-engine
+    restart: unless-stopped
+
+    env_file:
+      - path: ../env/production.env
+        required: false
+
+    environment:
+      MEMORY_DB_PATH: /data/lance
+      LOG_DIR: /app/logs
+
+    expose:
+      - "8000"
+
+    volumes:
+      - ame_lance_data:/data/lance
+      - ame_logs:/app/logs
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/v1/health/live', timeout=3)"
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+    depends_on:
+      agent-memory-engine:
+        condition: service_healthy
+
+    networks:
+      - backend
+
+networks:
+  backend:
+
+volumes:
+  ame_lance_data:
+  ame_logs:
+  caddy_data:
+  caddy_config:
