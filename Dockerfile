@@ -11,11 +11,15 @@ COPY requirements-runtime.txt .
 RUN python -m pip install --upgrade pip \
     && pip install -r requirements-runtime.txt
 
-COPY app ./app
-COPY memory_engine ./memory_engine
-COPY storage ./storage
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /data/lance /data/lance_mock /app/logs \
+    && chown -R appuser:appuser /app /data
 
-RUN mkdir -p /data/lance /app/logs
+COPY --chown=10001:10001 app ./app
+COPY --chown=10001:10001 memory_engine ./memory_engine
+COPY --chown=10001:10001 storage ./storage
+
+USER appuser
 
 EXPOSE 8000
 
